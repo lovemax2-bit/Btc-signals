@@ -1,0 +1,13 @@
+{
+  "name": "BTC EMA Signal Tracker",
+  "short_name": "BTC Signals",
+  "description": "Live BTC Triple EMA 9/21/50 crossover signals with SL/TP popups",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#030a0f",
+  "theme_color": "#00ffaa",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "icon.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
