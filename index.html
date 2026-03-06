@@ -247,6 +247,9 @@ body::before{
 
   <!-- TRADINGVIEW BINANCE CHART -->
   <div class="chart-wrap">
+    <div id="chartStatus" style="display:none;text-align:center;padding:8px;font-size:9px;color:#4a6880;letter-spacing:1px;">
+      ↻ Refreshing chart...
+    </div>
     <iframe
       id="tvChart"
       src="https://s.tradingview.com/widgetembed/?symbol=BINANCE%3ABTCUSDT&interval=15&theme=dark&style=1&locale=en&enable_publishing=false&hide_side_toolbar=1&allow_symbol_change=0&studies=MAExp%4040%2CMAExp%4040%2CMAExp%4040&studies_overrides=%7B%22MAExp%400.length%22%3A9%2C%22MAExp%401.length%22%3A21%2C%22MAExp%402.length%22%3A50%7D&withdateranges=0&hideideas=1&hide_legend=0&saveimage=0&toolbarbg=030a0f&backgroundColor=030a0f"
@@ -414,26 +417,71 @@ function sendSignalNotification(sig) {
 }
 
 // ═══════════════════════════════════════════
-// BINANCE KLINES — via CORS proxy
+// CHART AUTO-RELOAD (fixes freeze after 5-10 min)
 // ═══════════════════════════════════════════
+const CHART_URL = "https://s.tradingview.com/widgetembed/?symbol=BINANCE%3ABTCUSDT&interval=15&theme=dark&style=1&locale=en&enable_publishing=false&hide_side_toolbar=1&allow_symbol_change=0&studies=MAExp%4040%2CMAExp%4040%2CMAExp%4040&studies_overrides=%7B%22MAExp%400.length%22%3A9%2C%22MAExp%401.length%22%3A21%2C%22MAExp%402.length%22%3A50%7D&withdateranges=0&hideideas=1&hide_legend=0&saveimage=0&toolbarbg=030a0f&backgroundColor=030a0f";
+
+function reloadChart() {
+  const iframe = document.getElementById('tvChart');
+  const status = document.getElementById('chartStatus');
+  status.style.display = 'block';
+  iframe.style.opacity = '0.3';
+  // Force reload by resetting src
+  iframe.src = 'about:blank';
+  setTimeout(() => {
+    iframe.src = CHART_URL + '&t=' + Date.now(); // cache-bust
+    iframe.style.opacity = '1';
+    setTimeout(() => { status.style.display = 'none'; }, 4000);
+  }, 800);
+}
+
+// Reload chart every 8 minutes to prevent freeze
+setInterval(reloadChart, 8 * 60 * 1000);
+
+// Also reload when page becomes visible again (user switches back to app)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    reloadChart();
+    scanSignals(); // also refresh data
+  }
+});
+
+// ═══════════════════════════════════════════
+// CONNECTION STATUS
+// ═══════════════════════════════════════════
+function setStatus(msg, color) {
+  const el = document.getElementById('scTime');
+  if (el) { el.textContent = msg; el.style.color = color || ''; }
+}
+
+// ═══════════════════════════════════════════
+// BINANCE KLINES — multiple proxies with fallback
+// ═══════════════════════════════════════════
+const BINANCE_URL = 'https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=110';
+const PROXIES = [
+  `https://corsproxy.io/?${encodeURIComponent(BINANCE_URL)}`,
+  `https://api.allorigins.win/raw?url=${encodeURIComponent(BINANCE_URL)}`,
+  `https://thingproxy.freeboard.io/fetch/${BINANCE_URL}`,
+  `https://proxy.cors.sh/${BINANCE_URL}`,
+];
+
 async function fetchKlines() {
-  const urls = [
-    'https://corsproxy.io/?' + encodeURIComponent('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=110'),
-    'https://api.allorigins.win/raw?url=' + encodeURIComponent('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=110')
-  ];
-  for (const url of urls) {
+  for (const url of PROXIES) {
     try {
-      const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 9000);
+      const r = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(timer);
       if (!r.ok) continue;
       const raw = await r.json();
       if (!Array.isArray(raw) || raw.length < 50) continue;
       return raw.map(k => ({
-        t:  new Date(k[0]),
-        o:  parseFloat(k[1]),
-        h:  parseFloat(k[2]),
-        l:  parseFloat(k[3]),
-        c:  parseFloat(k[4]),
-        v:  parseFloat(k[5])
+        t: new Date(k[0]),
+        o: parseFloat(k[1]),
+        h: parseFloat(k[2]),
+        l: parseFloat(k[3]),
+        c: parseFloat(k[4]),
+        v: parseFloat(k[5])
       }));
     } catch(e) { continue; }
   }
@@ -497,12 +545,19 @@ let totalSigs = 0, sigs24h = 0, bigMoves = 0, smallMoves = 0;
 // ═══════════════════════════════════════════
 // SCAN SIGNALS
 // ═══════════════════════════════════════════
+let fetchFailCount = 0;
+
 async function scanSignals() {
+  setStatus('⟳ Fetching candle data...', '#4a6880');
   const klines = await fetchKlines();
   if (!klines || klines.length < 55) {
-    document.getElementById('scTime').textContent = 'Retrying data fetch...';
+    fetchFailCount++;
+    setStatus(`⚠ Data unavailable — retry ${fetchFailCount}`, '#ff8c00');
+    // Retry sooner if failed
+    setTimeout(scanSignals, 15000);
     return;
   }
+  fetchFailCount = 0;
 
   const closes  = klines.map(c => c.c);
   const e9all   = calcEMA(closes, 9);
@@ -591,7 +646,7 @@ function renderAll() {
   typeEl.className = 'sc-type ' + s.type;
   ghostEl.textContent = s.type;
   ghostEl.style.color = s.type==='BUY' ? 'var(--green)' : 'var(--red)';
-  document.getElementById('scTime').textContent = 'Signal at ' + s.timeStr;
+  document.getElementById('scTime').textContent = 'Signal at ' + s.timeStr + ' · Updated ' + new Date().toTimeString().slice(0,5);
 
   // Levels
   document.getElementById('lvEntry').textContent  = '$' + fmt(s.entry);
