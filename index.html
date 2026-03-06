@@ -195,10 +195,39 @@ body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
 
   <!-- TRADINGVIEW CHART -->
   <div class="chart-wrap">
-    <iframe id="tvChart"
-      src="https://s.tradingview.com/widgetembed/?symbol=BINANCE%3ABTCUSDT&interval=15&theme=dark&style=1&locale=en&hide_side_toolbar=1&allow_symbol_change=0&studies=MAExp%4040%2CMAExp%4040%2CMAExp%4040&studies_overrides=%7B%22MAExp%400.length%22%3A9%2C%22MAExp%401.length%22%3A21%2C%22MAExp%402.length%22%3A50%7D&withdateranges=0&hideideas=1&saveimage=0&toolbarbg=030a0f&backgroundColor=030a0f"
-      allowtransparency="true" scrolling="no" allowfullscreen>
-    </iframe>
+    <div id="tv-chart-container">
+      <div class="tradingview-widget-container" style="height:320px;">
+        <div id="tradingview_btc" style="height:100%;"></div>
+        <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+        <script type="text/javascript">
+        new TradingView.widget({
+          "width": "100%",
+          "height": 320,
+          "symbol": "BINANCE:BTCUSDT",
+          "interval": "15",
+          "timezone": "Etc/UTC",
+          "theme": "dark",
+          "style": "1",
+          "locale": "en",
+          "toolbar_bg": "#030a0f",
+          "enable_publishing": false,
+          "hide_top_toolbar": false,
+          "hide_legend": false,
+          "hide_side_toolbar": true,
+          "allow_symbol_change": false,
+          "save_image": false,
+          "container_id": "tradingview_btc",
+          "backgroundColor": "#030a0f",
+          "gridColor": "#0d2030",
+          "studies": [
+            { "id": "MAExp@tv-basicstudies", "inputs": { "length": 9 } },
+            { "id": "MAExp@tv-basicstudies", "inputs": { "length": 21 } },
+            { "id": "MAExp@tv-basicstudies", "inputs": { "length": 50 } }
+          ]
+        });
+        </script>
+      </div>
+    </div>
     <div class="chart-reload" onclick="reloadChart()">↻ RELOAD CHART</div>
   </div>
 
@@ -294,12 +323,33 @@ if(typeof Notification!=='undefined'&&Notification.permission==='granted'){
 }
 
 // ─── CHART ────────────────────────────────
-const TV_URL="https://s.tradingview.com/widgetembed/?symbol=BINANCE%3ABTCUSDT&interval=15&theme=dark&style=1&locale=en&hide_side_toolbar=1&allow_symbol_change=0&studies=MAExp%4040%2CMAExp%4040%2CMAExp%4040&studies_overrides=%7B%22MAExp%400.length%22%3A9%2C%22MAExp%401.length%22%3A21%2C%22MAExp%402.length%22%3A50%7D&withdateranges=0&hideideas=1&saveimage=0&toolbarbg=030a0f&backgroundColor=030a0f";
 
 function reloadChart(){
-  const f=document.getElementById('tvChart');
-  f.src='about:blank';
-  setTimeout(()=>{ f.src=TV_URL+'&_='+Date.now(); },600);
+  const container = document.getElementById('tv-chart-container');
+  container.innerHTML = '<div style="text-align:center;padding:30px;font-size:10px;color:#4a6880;letter-spacing:1px;">↻ Reloading chart...</div>';
+  setTimeout(() => {
+    container.innerHTML = `
+      <div class="tradingview-widget-container" style="height:320px;">
+        <div id="tradingview_btc" style="height:100%;"></div>
+      </div>`;
+    const s = document.createElement('script');
+    s.src = 'https://s3.tradingview.com/tv.js';
+    s.onload = () => {
+      new TradingView.widget({
+        "width":"100%","height":320,"symbol":"BINANCE:BTCUSDT",
+        "interval":"15","timezone":"Etc/UTC","theme":"dark","style":"1",
+        "locale":"en","toolbar_bg":"#030a0f","enable_publishing":false,
+        "hide_side_toolbar":true,"allow_symbol_change":false,"save_image":false,
+        "container_id":"tradingview_btc","backgroundColor":"#030a0f","gridColor":"#0d2030",
+        "studies":[
+          {"id":"MAExp@tv-basicstudies","inputs":{"length":9}},
+          {"id":"MAExp@tv-basicstudies","inputs":{"length":21}},
+          {"id":"MAExp@tv-basicstudies","inputs":{"length":50}}
+        ]
+      });
+    };
+    document.head.appendChild(s);
+  }, 800);
 }
 // Auto reload chart every 9 minutes
 setInterval(reloadChart, 9*60*1000);
